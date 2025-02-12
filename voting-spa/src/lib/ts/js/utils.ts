@@ -190,3 +190,22 @@ export function processProposalMetrics(proposals: any[], metrics: any[]): any[] 
 
     return proposal_data;
 }
+
+/**
+ * Performs SHA-256 hashing on the input string
+ * @param hash - Input string to hash
+ * @returns Hex encoded SHA-256 hash (lowercase)
+ */
+export async function convertTransactionHashToBase64(hash: string): Promise<string> {
+    // Convert string to bytes
+    const encoder = new TextEncoder();
+    const data = encoder.encode(hash);
+    
+    // Calculate SHA-256 hash
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    
+    // Convert to hex string
+    return Array.from(new Uint8Array(hashBuffer))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
+}

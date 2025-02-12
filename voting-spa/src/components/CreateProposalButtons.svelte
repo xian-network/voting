@@ -1,18 +1,29 @@
-<script>
+<script lang="ts">
     import { handleWalletError, handleWalletInfo } from "../lib/ts/js/wallet";
     import XianWalletUtils from "../lib/ts/js/xian-dapp-utils";
-    import { Button, GradientButton } from "flowbite-svelte";
-    import { walletInfo } from "../lib/ts/js/store";
+    import { GradientButton, Spinner } from "flowbite-svelte";
+    import { walletInfo, toasts } from "../lib/ts/js/store";
+    import { convertTransactionHashToBase64 } from "../lib/ts/js/utils";
+    import { replace } from "svelte-spa-router";
+    import { VOTING_CONTRACT_NAME } from "../lib/ts/js/config";
 
-    export let kwargs;
-    export let handleSubmitProposalClick
+    interface ProposalArgs {
+        title: string;
+        description: string;
+        expires_at: string;
+    }
+
+    export let kwargs: ProposalArgs;
+    export let handleSubmitProposalClick: () => void;
+    export let isValid = false;
+
+    let isSubmitting = false;
 
     async function connectWallet() {
         XianWalletUtils.init("https://node.xian.org");
         const info =
             await XianWalletUtils.requestWalletInfo().catch(handleWalletError);
         handleWalletInfo(info);
-        // isConnected = true;
     }
 
     function installWallet() {
@@ -33,27 +44,85 @@
     }
 
     async function submitProposal() {
-        const contractName = "con_vote_test_4";
-        const methodName = "create_proposal";
-        XianWalletUtils.sendTransaction(
-            contractName,
-            methodName,
-            kwargs,
-        );
-        localStorage.setItem("proposalTitle", '');
-        localStorage.setItem("proposalContent", '');
-        console.log("Proposal submitted");
+        if (!isValid) return;
+
+        isSubmitting = true;
+
+        try {
+            const contractName = VOTING_CONTRACT_NAME;
+            const methodName = "create_proposal";
+            const response = await XianWalletUtils.sendTransaction(
+                contractName,
+                methodName,
+                kwargs,
+            );
+
+            if (response.errors) {
+                throw new Error(response.errors);
+            }
+
+            localStorage.setItem("proposalTitle", "");
+            localStorage.setItem("proposalContent", "");
+            console.log({ response });
+            toasts.add({
+                type: "success",
+                title: "Success!",
+                message: "Your proposal has been submitted successfully.",
+                transactionHash: response.tx_hash,
+            });
+            console.log({ response });
+            replace(`/view_proposal/${response.result}`);
+        } catch (error: unknown) {
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Unknown error occurred";
+            toasts.add({
+                type: "error",
+                title: "Error",
+                message: `Failed to submit proposal: ${errorMessage}`,
+            });
+        } finally {
+            isSubmitting = false;
+        }
     }
+
+    $: buttonClasses = !isValid ? "opacity-50 cursor-not-allowed" : "";
 </script>
 
 <div class="flex justify-end gap-2">
     {#if !$walletInfo.initialized}
-        <GradientButton color="blue" on:click={connectWallet}>Connect Xian Wallet</GradientButton>
+        <GradientButton size="xl" color="blue" on:click={connectWallet}
+            >Connect Xian Wallet</GradientButton
+        >
     {:else if !$walletInfo.installed}
-        <GradientButton color="green" on:click={installWallet}>Install Wallet</GradientButton>
+        <GradientButton size="xl" color="green" on:click={installWallet}
+            >Install Wallet</GradientButton
+        >
     {:else if $walletInfo.locked}
-        <GradientButton color="purple" on:click={unlockWallet}>Unlock Wallet</GradientButton>
+        <GradientButton size="xl" color="purple" on:click={unlockWallet}
+            >Unlock Wallet</GradientButton
+        >
     {:else}
-        <GradientButton color="pink" on:click={submitProposal}>Submit Proposal</GradientButton>
+        <GradientButton
+            size="xl"
+            color="pink"
+            on:click={submitProposal}
+            disabled={!isValid || isSubmitting}
+            class={buttonClasses}
+        >
+            {#if isSubmitting}
+                <div class="flex items-center gap-3">
+                    <Spinner size="4" color="white" />
+                    <span>Submitting...</span>
+                </div>
+            {:else}
+                Submit Proposal
+            {/if}
+        </GradientButton>
     {/if}
 </div>
+
+<style>
+    /* Add any custom styles here */
+</style>

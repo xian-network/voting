@@ -1,19 +1,55 @@
 # State Variables
 owner = Variable()
+current_proposal_id = Variable()  # Track the current proposal ID
 proposals = Hash(default_value=None)
 proposal_votes = Hash(default_value=None)  # Stores voter choices by proposal_id and voter
 proposal_voters = Hash(default_value=None)  # Stores voter addresses by proposal_id and index
 proposal_vote_counts = Hash(default_value=0)  # Stores number of voters per proposal
-auto_update_tallies = Variable()
 proposal_metrics = Hash(default_value=0)  # Stores vote counts and power metrics for proposals
+
+# Events for tracking contract operations
+ProposalCreatedEvent = LogEvent(
+    event="ProposalCreated",
+    params={
+        "proposal_id": {'type': str, 'idx': True},
+        "creator": {'type': str, 'idx': True},
+        "title": {'type': str},
+        "expires_at": {'type': str},
+        "metadata": {'type': str}
+    }
+)
+
+VoteEvent = LogEvent(
+    event="Vote",
+    params={
+        "proposal_id": {'type': str, 'idx': True},
+        "voter": {'type': str, 'idx': True},
+        "choice": {'type': str},
+        "previous_choice": {'type': str}
+    }
+)
+
+ProposalFinalizedEvent = LogEvent(
+    event="ProposalFinalized",
+    params={
+        "proposal_id": {'type': str, 'idx': True},
+        "total_for": {'type': int},
+        "total_against": {'type': int},
+        "total_abstain": {'type': int},
+        "pow_for": {'type': (int, float)},
+        "pow_against": {'type': (int, float)},
+        "pow_abstain": {'type': (int, float)}
+    }
+)
+
+# Configurable parameters stored in a settings hash
+settings = Hash(default_value=None)
 
 """
 TO DO :
-- Overall consolidate hash structure to proposal hash ✓
-- Add property to proposal hash to show current vote count + power
-- Add method that updates the count, power & tallies
-- title should have a minimum length of 10 characters
-- description should have a minimum length of 100 characters\
+- add a max length for a title (10-50 characters)
+- make max / min parameters that can be changed by the owner.
+- add a fee for creating a proposal, it must a changeable value by the owner
 """
 
 
@@ -23,7 +59,13 @@ def seed():
     Initialize the contract with the deployer as the owner
     """
     owner.set(ctx.caller)
-    auto_update_tallies.set(False)  # Default to false for gas efficiency
+    current_proposal_id.set(0)  # Initialize proposal ID counter
+    
+    # Initialize configurable parameters with default values
+    settings["min_title_length"] = 10  # Default minimum title length
+    settings["max_title_length"] = 50  # Default maximum title length
+    settings["proposal_fee"] = 100  # Default proposal fee in currency tokens
+    settings["auto_update_tallies"] = False  # Default to false for gas efficiency
 
 
 @export
@@ -36,27 +78,76 @@ def change_owner(new_owner: str):
 
 
 @export
-def create_proposal(title: str, description: str, expires_at: str):
+def update_settings(setting_name: str, value: Any):
+    """
+    Update a contract setting
+    Args:
+        setting_name: Name of the setting to update
+        value: New value for the setting
+    """
+    assert ctx.caller == owner.get(), "Only owner can change settings"
+    
+    if setting_name == "title_length_limits":
+        assert isinstance(value, list) and len(value) == 2, "Title length limits must be a list of [min, max]"
+        min_length, max_length = value
+        assert isinstance(min_length, int) and isinstance(max_length, int), "Lengths must be integers"
+        assert 0 < min_length <= max_length, "Invalid length values"
+        settings["min_title_length"] = min_length
+        settings["max_title_length"] = max_length
+    
+    elif setting_name == "proposal_fee":
+        assert isinstance(value, int) and value >= 0, "Fee must be a non-negative integer"
+        settings["proposal_fee"] = value
+    
+    elif setting_name == "auto_update_tallies":
+        assert isinstance(value, int), "Auto update tallies must be an integer"
+        settings["auto_update_tallies"] = value
+    
+    else:
+        raise Exception("Invalid setting name")
+
+
+@export
+def get_settings():
+    """
+    Get the current contract settings
+    """
+    return {
+        "min_title_length": settings["min_title_length"],
+        "max_title_length": settings["max_title_length"],
+        "proposal_fee": settings["proposal_fee"],
+        "auto_update_tallies": settings["auto_update_tallies"]
+    }
+
+
+@export
+def create_proposal(title: str, description: str, expires_at: str, metadata: dict = None):
     """
     Create a new proposal
     Args:
-        title: Title of the proposal (minimum 10 characters)
+        title: Title of the proposal (length must be between min_title_length and max_title_length)
         description: Detailed description of the proposal (minimum 100 characters)
         expires_at: Datetime string in format 'YYYY-MM-DD HH:MM:SS'
+        metadata: Optional dictionary of key-value pairs for additional proposal data
     """
-    token_balances = ForeignHash(foreign_contract="currency", foreign_name="balances")
-    
+
     # Check if creator has tokens
-    assert token_balances[ctx.caller] > 0, "Must have tokens to create proposal"
 
     # Type checking
     assert isinstance(title, str), "Title must be a string"
     assert isinstance(description, str), "Description must be a string"
     assert isinstance(expires_at, str), "Expiry date must be a string"
+    if metadata is not None:
+        assert isinstance(metadata, dict), "Metadata must be a dictionary"
+        for key, value in metadata.items():
+            assert isinstance(key, str), "Metadata keys must be strings"
+            assert isinstance(value, (str, int, bool, float)), "Metadata values must be primitive types"
 
     # Length checking
     assert title != "", "Title cannot be empty"
-    assert len(title) >= 10, "Title must be at least 10 characters long"
+    title_len = len(title)
+    assert title_len >= settings["min_title_length"], f"Title must be at least {settings['min_title_length']} characters long"
+    assert title_len <= settings["max_title_length"], f"Title must be at most {settings['max_title_length']} characters long"
     assert description != "", "Description cannot be empty"
     assert len(description) >= 100, "Description must be at least 100 characters long"
 
@@ -64,8 +155,16 @@ def create_proposal(title: str, description: str, expires_at: str):
     expiry_datetime = datetime.datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
     assert expiry_datetime > now, "Expiry date must be in the future"
 
-    # Create unique proposal ID using SHA3 hash
-    proposal_id = hashlib.sha3(f"{title}{description}{ctx.caller}{now}")
+    # Handle proposal fee
+    proposal_fee = settings["proposal_fee"]
+    if proposal_fee > 0:
+        # Transfer fee using the currency contract
+        currency = importlib.import_module('currency')
+        currency.transfer_from(amount=proposal_fee, to='dao', main_account=ctx.caller)
+
+    # Get and increment the proposal ID
+    proposal_id = current_proposal_id.get()
+    current_proposal_id.set(proposal_id + 1)
 
     # Store proposal details
     proposals[proposal_id] = {
@@ -74,7 +173,9 @@ def create_proposal(title: str, description: str, expires_at: str):
         "creator": ctx.caller,
         "created_at": now,
         "expires_at": expiry_datetime,
-        "status": "active"
+        "status": "active",
+        "fee_paid": proposal_fee,
+        "metadata": metadata or {}  # Store empty dict if no metadata provided
     }
     
     # Initialize vote count
@@ -88,37 +189,58 @@ def create_proposal(title: str, description: str, expires_at: str):
     proposal_metrics[proposal_id, "pow_against"] = 0
     proposal_metrics[proposal_id, "pow_abstain"] = 0
 
+    # Emit proposal created event
+    ProposalCreatedEvent({
+        "proposal_id": str(proposal_id),
+        "creator": ctx.caller,
+        "title": title,
+        "expires_at": expires_at,
+        "metadata": str(metadata) or str({})
+    })
+
     return proposal_id
 
 
 @export
 def vote(proposal_id: str, choice: str):
     """
-    Vote on a proposal - only records the voter's choice, weight calculated at finalization
+    Vote on a proposal or change an existing vote
+    Args:
+        proposal_id: The ID of the proposal
+        choice: Vote choice - 'y' for yes, 'n' for no, '-' for abstain
     """
-    token_balances = ForeignHash(foreign_contract="currency", foreign_name="balances")
-    
-    # Check if proposal exists
+    # Check if proposal exists and is active
     proposal = proposals[proposal_id]
     assert proposal is not None, "Proposal does not exist"
     assert proposal["status"] == "active", "Proposal is not active"
     assert now <= proposal["expires_at"], "Proposal voting period has ended"
     assert choice in ["y", "n", "-"], "Invalid vote choice. Must be 'y', 'n', or '-'"
 
-    # Check if voter has tokens
-    assert token_balances[ctx.caller] > 0, "Must have tokens to vote"
+    # Get current vote if exists
+    current_vote = proposal_votes[proposal_id, ctx.caller]
+    
+    # If changing vote, verify it's different
+    if current_vote is not None:
+        assert current_vote != choice, "New vote must be different from current vote"
+    else:
+        # New vote - increment vote count and store voter
+        current_vote_count = proposal_vote_counts[proposal_id]
+        proposal_voters[proposal_id, current_vote_count] = ctx.caller
+        proposal_vote_counts[proposal_id] = current_vote_count + 1
 
-    # Check if already voted
-    assert proposal_votes[proposal_id, ctx.caller] is None, "Already voted"
-
-    # Store vote
-    current_vote_count = proposal_vote_counts[proposal_id]
-    proposal_voters[proposal_id, current_vote_count] = ctx.caller
+    # Store the vote
     proposal_votes[proposal_id, ctx.caller] = choice
-    proposal_vote_counts[proposal_id] = current_vote_count + 1
+
+    # Emit vote event
+    VoteEvent({
+        "proposal_id": str(proposal_id),
+        "voter": ctx.caller,
+        "choice": choice,
+        "previous_choice": current_vote if current_vote else ""
+    })
 
     # Update tallies if auto-update is enabled
-    if auto_update_tallies.get():
+    if settings["auto_update_tallies"] > 0:
         update_current_tallies(proposal_id)
 
 
@@ -190,6 +312,17 @@ def finalize_proposal(proposal_id: str):
     # Update proposal status
     proposal["status"] = "finalized"
     proposals[proposal_id] = proposal
+
+    # Emit finalized event
+    ProposalFinalizedEvent({
+        "proposal_id": str(proposal_id),
+        "total_for": final_tally["for"],
+        "total_against": final_tally["against"],
+        "total_abstain": final_tally["abstain"],
+        "pow_for": final_tally["pow_for"],
+        "pow_against": final_tally["pow_against"],
+        "pow_abstain": final_tally["pow_abstain"]
+    })
 
     return final_tally
 
@@ -266,49 +399,3 @@ def update_current_tallies(proposal_id: str):
     proposal_metrics[proposal_id, "pow_abstain"] = current_tally["pow_abstain"]
 
     return current_tally
-
-
-@export
-def change_vote(proposal_id: str, new_choice: str):
-    """
-    Change an existing vote on a proposal
-    Args:
-        proposal_id: The ID of the proposal
-        new_choice: New vote choice - 'y' for yes, 'n' for no, '-' for abstain
-    """
-    token_balances = ForeignHash(foreign_contract="currency", foreign_name="balances")
-    
-    # Check if proposal exists and is active
-    proposal = proposals[proposal_id]
-    assert proposal is not None, "Proposal does not exist"
-    assert proposal["status"] == "active", "Proposal is not active"
-    assert now <= proposal["expires_at"], "Proposal voting period has ended"
-    assert new_choice in ["y", "n", "-"], "Invalid vote choice. Must be 'y', 'n', or '-'"
-
-    # Check if voter has tokens
-    assert token_balances[ctx.caller] > 0, "Must have tokens to vote"
-
-    # Check if they have voted before
-    assert proposal_votes[proposal_id, ctx.caller] is not None, "Must have voted to change vote"
-    
-    # Check if the vote is actually different
-    old_vote = proposal_votes[proposal_id, ctx.caller]
-    assert old_vote != new_choice, "New vote must be different from current vote"
-
-    # Update the vote
-    proposal_votes[proposal_id, ctx.caller] = new_choice
-
-    # Update tallies if auto-update is enabled
-    if auto_update_tallies.get():
-        update_current_tallies(proposal_id)
-
-
-@export
-def set_auto_update_tallies(enabled: bool):
-    """
-    Set whether tallies should automatically update after each vote
-    Only owner can change this setting
-    """
-    assert ctx.caller == owner.get(), "Only owner can change auto update setting"
-    assert isinstance(enabled, bool), "Enabled must be a boolean"
-    auto_update_tallies.set(enabled)

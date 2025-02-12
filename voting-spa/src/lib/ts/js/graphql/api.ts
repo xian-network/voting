@@ -1,5 +1,5 @@
 import { formatDateTime } from "../utils";
-import { getAllProposalsQuery, getAllProposalMetricsQuery, getProposalQuery, getProposalMetricsQuery } from "./queries";
+import { getAllProposalsQuery, getAllProposalMetricsQuery, getProposalQuery, getProposalMetricsQuery, hasVotedQuery } from "./queries";
 
 const endpoint = 'https://node.xian.org/graphql'
 
@@ -58,6 +58,13 @@ export async function getAllProposalMetrics() {
 
 export async function getProposalMetrics(id: string) {
     const query = getProposalMetricsQuery(id);
+    const response = await fetchValues(query);
+    console.log(response);
+    return response;
+}
+
+export async function hasVoted(id: string, address: string) {
+    const query = hasVotedQuery(id, address);
     const response = await fetchValues(query);
     console.log(response);
     return response;

@@ -63,6 +63,7 @@ const XianWalletUtils: any = {
                         let decodedData = window.atob(data);
                         let decodedOriginalTx = window.atob(original_tx);
                         let parsedData = JSON.parse(decodedData);
+                        parsedData.tx_hash = event.detail.txid;
                         parsedData.original_tx = JSON.parse(this.hexToString(decodedOriginalTx));
                         resolver(parsedData);
                     }).catch((error: any) => {
@@ -175,6 +176,8 @@ const XianWalletUtils: any = {
                 throw new Error('Network response was not ok');
             }
             const data = await response.json();
+            console.log({txHash})
+            data.tx_hash = txHash;
             return data;
         } catch (error) {
             console.log('Transaction not found yet');
