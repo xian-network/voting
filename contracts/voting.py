@@ -36,9 +36,9 @@ ProposalFinalizedEvent = LogEvent(
         "total_for": {'type': int},
         "total_against": {'type': int},
         "total_abstain": {'type': int},
-        "pow_for": {'type': (int, float)},
-        "pow_against": {'type': (int, float)},
-        "pow_abstain": {'type': (int, float)}
+        "pow_for": {'type': (int, decimal)},
+        "pow_against": {'type': (int, decimal)},
+        "pow_abstain": {'type': (int, decimal)}
     }
 )
 

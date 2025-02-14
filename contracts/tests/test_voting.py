@@ -1,5 +1,6 @@
 import unittest
 from contracting.stdlib.bridge.time import Datetime
+from contracting.stdlib.bridge.decimal import ContractingDecimal
 from contracting.client import ContractingClient
 import datetime
 import os
@@ -783,3 +784,49 @@ def balance_of(account: str):
         # THEN proposal should be created with empty metadata dict
         proposal = self.voting.get_proposal(proposal_id=proposal_id)
         self.assertEqual(proposal["metadata"], {})
+
+    def test_finalize_proposal_event_types(self):
+        # GIVEN a proposal with votes
+        self.currency.balances[self.test_voters[0]] = 1000.1
+        proposal_id = self.create_test_proposal(self.test_voters[0])
+        proposal_fee = self.voting.get_settings()["proposal_fee"]
+
+        # Add votes from voters with different token amounts
+        self.voting.vote(proposal_id=proposal_id, choice='y', signer=self.test_voters[0])  # 1000 - fee tokens
+        self.voting.vote(proposal_id=proposal_id, choice='n', signer=self.test_voters[1])  # 2000 tokens
+        self.voting.vote(proposal_id=proposal_id, choice='-', signer=self.test_voters[2])  # 3000 tokens
+
+        # WHEN finalizing after expiry
+        future_time = datetime.datetime.now() + datetime.timedelta(days=1)
+        expired_time = future_time + datetime.timedelta(days=2)
+        expired_env = {"now": Datetime(
+            expired_time.year,
+            expired_time.month,
+            expired_time.day,
+            expired_time.hour,
+            expired_time.minute
+        )}
+
+        # Print the types of values before finalization for debugging
+        current_tally = self.voting.get_vote_count(proposal_id=proposal_id)
+        print("Vote count types:")
+        print(f"pow_for type: {type(current_tally['pow_for'])}")
+        print(f"pow_against type: {type(current_tally['pow_against'])}")
+        print(f"pow_abstain type: {type(current_tally['pow_abstain'])}")
+        breakpoint()
+        # THEN finalization should succeed without type errors
+        final_tally = self.voting.finalize_proposal(
+            proposal_id=proposal_id,
+            signer=self.test_voters[0],
+            environment=expired_env
+        )
+
+        # Verify the types of the returned values
+        self.assertIsInstance(final_tally["pow_for"], (int, float, ContractingDecimal))
+        self.assertIsInstance(final_tally["pow_against"], (int, float, ContractingDecimal))
+        self.assertIsInstance(final_tally["pow_abstain"], (int, float, ContractingDecimal))
+
+        # Verify the values are as expected
+        self.assertEqual(final_tally["pow_for"], 1000.1 - proposal_fee)
+        self.assertEqual(final_tally["pow_against"], 2000)
+        self.assertEqual(final_tally["pow_abstain"], 3000)
