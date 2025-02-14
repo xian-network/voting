@@ -121,8 +121,8 @@
   }
 </script>
 
-<main class="flex flex-col min-h-screen p-5 pt-8">
-  <div class="text-center mb-12">
+<main class="flex flex-col min-h-screen p-0 pt-0 sm:p-5 sm:pt-8">
+  <div class="text-center mb-12 p-3">
     <h1 class="text-5xl font-extralight">holder proposals</h1>
     <p class="text-lg mt-2">crowdsourced sentiment powered by $xian</p>
   </div>
@@ -130,7 +130,7 @@
   {#if proposal_data.length === 0}
     <div class="flex justify-center items-center flex-grow">Loading...</div>
   {:else}
-    <div class="w-full max-w-7xl grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mx-auto px-4">
+    <div class="w-full max-w-7xl grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mx-auto px-4 sm:p-0 sm:m-0">
       {#each Object.values(proposal_data) as p_data, i}
         <button
           type="button"

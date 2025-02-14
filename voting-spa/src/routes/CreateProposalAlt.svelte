@@ -122,8 +122,8 @@
   }
 </script>
 
-<main class="flex flex-col items-center min-h-screen p-5">
-  <div class="w-full max-w-4xl px-8 mx-auto">
+<main class="flex flex-col items-center min-h-screen p-0 sm:p-5">
+  <div class="w-full max-w-4xl px-5 sm:px-8 mx-auto">
     <h1 class="text-4xl font-bold mb-8">Create New Proposal</h1>
 
     <div class="space-y-8">
