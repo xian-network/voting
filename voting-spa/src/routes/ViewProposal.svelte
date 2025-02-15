@@ -91,6 +91,7 @@
         )[0];
         proposal = p_data.proposal;
         metrics = p_data.metrics;
+        updateXnsLookups([proposal.creator])
     }
 
     // Modal state
@@ -115,8 +116,6 @@
         proposal = p_data?.proposal;
         metrics = p_data?.metrics;
 
-        console.log({ proposal: p_data });
-        updateXnsLookups([proposal.creator])
         if (!p_data) {
             await refreshProposalData();
         }
