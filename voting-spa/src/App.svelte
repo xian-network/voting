@@ -14,7 +14,7 @@
   import About from "./routes/About.svelte";
   import ToastNotification from "./components/ToastNotification.svelte";
   import SocialIcons from "./components/SocialIcons.svelte";
-  import { location } from "svelte-spa-router";
+  import { location } from "svelte-spa-router"
   import { slide } from 'svelte/transition';
 
   document.documentElement.classList.add("dark");
@@ -22,7 +22,7 @@
   $: showNav = $location !== "/" && $location !== "/landing";
 
   const routes = {
-    // Exact path
+
     "/": Landing,
     "/landing": Landing,
     // Using named parameters, with last being optional

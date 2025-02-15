@@ -1,7 +1,8 @@
 import { formatDateTime } from "../utils";
 import { getAllProposalsQuery, getAllProposalMetricsQuery, getProposalQuery, getProposalMetricsQuery, hasVotedQuery } from "./queries";
+import { TransactionBuilder, type I_NetworkSettings, type I_TxInfo } from "xian-js"
 
-const endpoint = 'https://node.xian.org/graphql'
+const graphql_endpoint = 'https://node.xian.org/graphql'
 
 export async function fetchValues(query: string) {
     const data = JSON.stringify({
@@ -9,7 +10,7 @@ export async function fetchValues(query: string) {
     });
 
     try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(graphql_endpoint, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -68,4 +69,26 @@ export async function hasVoted(id: string, address: string) {
     const response = await fetchValues(query);
     console.log(response);
     return response;
+}
+
+export async function requestXnsLookup(addresses: string[]) {
+    let networkInfo: I_NetworkSettings = {
+        chain_id: "xian-network-3",
+        masternode_hosts: ["https://node.xian.org"]
+    };
+
+    const txInfo: I_TxInfo = {
+        contractName: "con_xns_multilookup",
+        methodName: "multicall",
+        kwargs: {
+            addresses
+        },
+        chain_id: "xian-network-3",
+        senderVk: "abc123"
+    }
+
+    let tx = new TransactionBuilder(networkInfo, txInfo)
+    const res = await tx.simulate_txn()
+    console.log(res)
+    return res
 }

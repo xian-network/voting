@@ -1,7 +1,8 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { getProposal, getProposalMetrics, hasVoted } from "../lib/ts/js/graphql/api";
-    import { viewingProposal, walletInfo } from "../lib/ts/js/store";
+    import { getProposal, getProposalMetrics, hasVoted } from "../lib/ts/js/api/api";
+    import { updateXnsLookups } from "../lib/ts/js/xns";
+    import { viewingProposal, walletInfo, xnsLookupsStore } from "../lib/ts/js/store";
     import { processProposalMetrics, pythonDateToUnixTime } from "../lib/ts/js/utils";
     import VoteButtons from "../components/VoteButtons.svelte";
     import VoteMetricsDisplay from "../components/VoteMetricsDisplay.svelte";
@@ -115,6 +116,7 @@
         metrics = p_data?.metrics;
 
         console.log({ proposal: p_data });
+        updateXnsLookups([proposal.creator])
         if (!p_data) {
             await refreshProposalData();
         }
@@ -149,7 +151,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" />
                     </svg>
-                    <span>Created by: <a href={`https://explorer.xian.org/addresses/${proposal.creator}`} target="_blank" rel="noopener noreferrer" class="hover:text-cyan-400 transition-colors">{truncateAddress(proposal.creator)}</a></span>
+                    <span>Created by: <a href={`https://explorer.xian.org/addresses/${proposal.creator}`} target="_blank" rel="noopener noreferrer" class="hover:text-cyan-400 transition-colors">{$xnsLookupsStore[proposal.creator] ? $xnsLookupsStore[proposal.creator] : truncateAddress(proposal.creator)}</a></span>
                 </div>
                 <div class="flex items-center gap-1 mt-1">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

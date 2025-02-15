@@ -40,7 +40,7 @@ export const walletInfo = writable<I_WalletInfo>({
     locked: false
 });
 export const viewingProposal = writable<any>();
-
+export const xnsLookupsStore = writable<{ [key: string]: string }>({});
 
 interface I_WalletInfo {
     initialized: boolean;

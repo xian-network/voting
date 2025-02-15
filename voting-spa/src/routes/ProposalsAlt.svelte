@@ -3,12 +3,13 @@
   import {
     getAllProposalMetrics,
     getAllProposals,
-  } from "../lib/ts/js/graphql/api";
+  } from "../lib/ts/js/api/api";
+  import { updateXnsLookups } from "../lib/ts/js/xns";
   import {
     processProposalMetrics,
     pythonDateToUnixTime,
   } from "../lib/ts/js/utils";
-  import { viewingProposal } from "../lib/ts/js/store";
+  import { viewingProposal, xnsLookupsStore } from "../lib/ts/js/store";
   import VoteMetricsDisplay from "../components/VoteMetricsDisplay.svelte";
 
   function formatNumber(num: number): string {
@@ -108,11 +109,23 @@
   let proposal_data: any[] = [];
   const proposalRequests = [getAllProposals(), getAllProposalMetrics()];
 
-  Promise.all(proposalRequests).then((data: any) => {
+  Promise.all(proposalRequests).then(async (data: any) => {
+    const xnsLookups = await updateXnsLookups([
+      "e9e8aad29ce8e94fd77d9c55582e5e0c57cf81c552ba61c0d4e34b0dc11fd931"
+    ]);
+    console.log({xnsLookups})
     proposals = data[0];
     metrics = data[1];
-    proposal_data = Object.values(processProposalMetrics(proposals, metrics))
-      .sort((a, b) => new Date(b.proposal.created_at).getTime() - new Date(a.proposal.created_at).getTime());
+    proposal_data = Object.values(
+      processProposalMetrics(proposals, metrics),
+    ).sort(
+      (a, b) =>
+        new Date(b.proposal.created_at).getTime() -
+        new Date(a.proposal.created_at).getTime(),
+    );
+    // for (const p of proposal_data) {
+    //   p.proposal.creator = JSON.parse(res.result.replace(/'/g, '"'))[p.proposal.creator]
+    // }
   });
 
   function handleClickProposal(data: any) {
@@ -130,7 +143,9 @@
   {#if proposal_data.length === 0}
     <div class="flex justify-center items-center flex-grow">Loading...</div>
   {:else}
-    <div class="w-full max-w-7xl grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mx-auto px-4 sm:p-0 sm:m-0">
+    <div
+      class="w-full max-w-7xl grid grid-cols-1 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 mx-auto px-4 sm:p-0 sm:m-0"
+    >
       {#each Object.values(proposal_data) as p_data, i}
         <button
           type="button"
@@ -209,7 +224,7 @@
                     class="hover:text-cyan-400 transition-colors"
                     on:click|stopPropagation
                   >
-                    {truncateAddress(p_data.proposal.creator)}
+                  {$xnsLookupsStore[p_data.proposal.creator] ? $xnsLookupsStore[p_data.proposal.creator] : truncateAddress(p_data.proposal.creator)}
                   </a>
                 </span>
               </div>
@@ -295,7 +310,7 @@
     -webkit-appearance: none;
     -moz-appearance: none;
     will-change: transform, opacity;
-    
+
     /* Initial animation state */
     opacity: 0;
     animation: fadeInUp 0.6s ease forwards;
